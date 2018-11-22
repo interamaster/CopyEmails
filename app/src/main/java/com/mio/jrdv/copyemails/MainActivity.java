@@ -1,20 +1,34 @@
 package com.mio.jrdv.copyemails;
 
+import android.annotation.TargetApi;
+import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.AppOpsManager;
 import android.app.ListActivity;
+import android.app.usage.UsageStats;
+import android.app.usage.UsageStatsManager;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.Settings;
+import android.support.annotation.NonNull;
 import android.support.design.widget.FloatingActionButton;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.AdapterView;
 import android.widget.EditText;
 import android.widget.ListAdapter;
 import android.widget.ListView;
@@ -22,19 +36,37 @@ import android.widget.SimpleCursorAdapter;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.util.Collections;
+import java.util.List;
+import java.util.SortedMap;
+import java.util.TreeMap;
+
+import static android.Manifest.permission.READ_EXTERNAL_STORAGE;
+import static android.Manifest.permission.WRITE_EXTERNAL_STORAGE;
+
+//v1.0 v1 final con acceso a datos de uso para poder volver a la app anterior y exportar db a downloads
+
 public class MainActivity extends ListActivity {
 
 
     private ListAdapter todoListAdapter;
     private TodoListSQLHelper todoListSQLHelper;
 
+    private static final int PERMISSION_REQUEST_CODE = 200;
 
-
+    private String previousApptolaunchafterCopy;
 
 
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
        // Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
@@ -42,7 +74,22 @@ public class MainActivity extends ListActivity {
 
 
 
+        usageAccessSettingsPage();
+
+        //permisos lectura/escritur myor mrshmallow
+
+
+            if (checkPermission()) {
+                requestPermissionAndContinue();
+            }
+
+
         updateTodoList();
+
+            //para guardar la app de donde veniamos y volver despues de darle a copiar!!
+
+
+        lastapk();
 
 
 
@@ -58,9 +105,47 @@ public class MainActivity extends ListActivity {
 
         */
 
+        //boton export db
+
+        FloatingActionButton export = (FloatingActionButton) findViewById(R.id.exportdb);
+        export.setOnClickListener(new View.OnClickListener() {
+                                      @Override
+                                      public void onClick(View view) {
 
 
 
+
+
+
+
+                                          AlertDialog.Builder todoTaskBuilder = new AlertDialog.Builder(MainActivity.this);
+                                          todoTaskBuilder.setTitle("EXPORTAR EMAILS");
+                                          todoTaskBuilder.setMessage("To download Folder");
+
+                                          todoTaskBuilder.setPositiveButton("SI", new DialogInterface.OnClickListener() {
+                                              @Override
+                                              public void onClick(DialogInterface dialogInterface, int i) {
+
+                                                  try {
+                                                      copyAppDbToDownloadFolder(MainActivity.this);
+                                                  } catch (IOException e) {
+                                                      e.printStackTrace();
+                                                  }
+
+                                              }
+                                          });
+
+                                          todoTaskBuilder.setNegativeButton("Cancel", null);
+
+                                          todoTaskBuilder.create().show();
+
+                                      }
+
+                                  });
+
+
+
+    //boton add email
 
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
@@ -196,6 +281,89 @@ public class MainActivity extends ListActivity {
         return super.onOptionsItemSelected(item);
     }
 
+    ////////////////////////////////////////////////////////////
+
+
+
+    private boolean checkPermission() {
+
+        return ContextCompat.checkSelfPermission(this, WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                && ContextCompat.checkSelfPermission(this, READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                ;
+    }
+
+    private void requestPermissionAndContinue() {
+        if (ContextCompat.checkSelfPermission(this, WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                && ContextCompat.checkSelfPermission(this, READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this, WRITE_EXTERNAL_STORAGE)
+                    && ActivityCompat.shouldShowRequestPermissionRationale(this, READ_EXTERNAL_STORAGE)) {
+                AlertDialog.Builder alertBuilder = new AlertDialog.Builder(this);
+                alertBuilder.setCancelable(true);
+                alertBuilder.setTitle("PERMISO NECESARIO");
+                alertBuilder.setMessage("PARA PODER EXPORTAR DATABASE");
+                alertBuilder.setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
+                    @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
+                    public void onClick(DialogInterface dialog, int which) {
+                        ActivityCompat.requestPermissions(MainActivity.this, new String[]{WRITE_EXTERNAL_STORAGE
+                                , READ_EXTERNAL_STORAGE}, PERMISSION_REQUEST_CODE);
+                    }
+                });
+                AlertDialog alert = alertBuilder.create();
+                alert.show();
+                Log.e("", "permission denied, show dialog");
+            } else {
+                ActivityCompat.requestPermissions(MainActivity.this, new String[]{WRITE_EXTERNAL_STORAGE,
+                        READ_EXTERNAL_STORAGE}, PERMISSION_REQUEST_CODE);
+            }
+        } else {
+            openActivity();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            if (permissions.length > 0 && grantResults.length > 0) {
+
+                boolean flag = true;
+                for (int i = 0; i < grantResults.length; i++) {
+                    if (grantResults[i] != PackageManager.PERMISSION_GRANTED) {
+                        flag = false;
+                    }
+                }
+                if (flag) {
+                    openActivity();
+                } else {
+                    finish();
+                }
+
+            } else {
+                finish();
+            }
+        } else {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
+    }
+
+    private void openActivity() {
+        //add your further process after giving permission or to download images from remote server.
+    }
+
+    /////////////////////////////////////////////////////////
+    public void copyAppDbToDownloadFolder(Activity ctx) throws IOException {
+        File backupDB = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                TodoListSQLHelper.DB_NAME); // for example "my_data_backup.db"
+        File currentDB = getApplicationContext().getDatabasePath(TodoListSQLHelper.DB_NAME);
+        if (currentDB.exists()) {
+            FileChannel src = new FileInputStream(currentDB).getChannel();
+            FileChannel dst = new FileOutputStream(backupDB).getChannel();
+            dst.transferFrom(src, 0, src.size());
+            src.close();
+            dst.close();
+        }
+    }
 
 
     //////////////////////////////////////////////////////////
@@ -220,22 +388,7 @@ public class MainActivity extends ListActivity {
                 0
         );
 
-        final ListView lv = getListView();
-        lv.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
-            @Override
-            public boolean onItemLongClick(AdapterView<?> arg0, View arg1,int row, long arg3) {
 
-
-                // your code
-
-                Log.d("INFO","in onLongClick");
-                String str=lv.getItemAtPosition(row).toString();
-
-                Log.d("INFO","long click : " +str);
-
-                return true;
-            }
-        });
 
 
 
@@ -249,12 +402,107 @@ public class MainActivity extends ListActivity {
 
 
 
+    public void usageAccessSettingsPage() {
 
-    //no hace nada:
-    @Override
-    protected void onListItemClick (ListView l, View v, int position, long id) {
-        Toast.makeText(this, "Clicked row " + position, Toast.LENGTH_SHORT).show();
+        /*
+
+        //no funciona ?¿?¿
+
+        Intent intent = new Intent();
+        intent.setAction(Settings.ACTION_USAGE_ACCESS_SETTINGS);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Uri uri = Uri.fromParts("package", this.getPackageName(), null);
+        intent.setData(uri);
+
+
+
+        if (intent.resolveActivity(getPackageManager()) != null) {
+
+
+            //startActivityForResult(intent, 0);
+            startActivity(intent);
+        } else {
+
+            //TODO
+        }
+
+        */
+
+        boolean granted = false;
+        AppOpsManager appOps = (AppOpsManager) this
+                .getSystemService(Context.APP_OPS_SERVICE);
+        int mode = appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(), this.getPackageName());
+
+        if (mode == AppOpsManager.MODE_DEFAULT) {
+            granted = (this.checkCallingOrSelfPermission(android.Manifest.permission.PACKAGE_USAGE_STATS) == PackageManager.PERMISSION_GRANTED);
+        } else {
+            granted = (mode == AppOpsManager.MODE_ALLOWED);
+        }
+
+
+        if (!granted){
+
+            AlertDialog.Builder todoTaskBuilder = new AlertDialog.Builder(MainActivity.this);
+            todoTaskBuilder.setTitle("PERMITE ACCESO USO DE APPS");
+            todoTaskBuilder.setMessage("Para volver a la app anterior tras copiar");
+
+            todoTaskBuilder.setPositiveButton("SI", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialogInterface, int i) {
+
+                    Intent intent = new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS);
+                    startActivity(intent);
+
+                }
+            });
+
+            todoTaskBuilder.setNegativeButton("Cancel", null);
+
+            todoTaskBuilder.create().show();
+
+
+        }
     }
+
+    private void lastapk()  {
+
+
+
+                UsageStatsManager usm = (UsageStatsManager) getSystemService("usagestats");
+                long time = System.currentTimeMillis();
+                List<UsageStats> appList = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY,
+                        time - 10 * 1000, time);
+                if (appList != null && appList.size() > 0) {
+                    SortedMap<Long, UsageStats> mySortedMap = new TreeMap<Long, UsageStats>();
+                    for (UsageStats usageStats : appList) {
+
+                        // Filter system decor apps
+                        if ("com.android.systemui".equals(usageStats.getPackageName())||
+                                "com.sec.android.app.launcher".equals((usageStats.getPackageName()))) {
+                            continue;
+                        }
+                      //esto los ordena pior uso
+                        mySortedMap.put(usageStats.getLastTimeUsed(), usageStats);
+                    }
+
+                    Log.d("info","totatl de sortedmap: "+mySortedMap.size());
+                    if (mySortedMap != null && !mySortedMap.isEmpty()) {
+                      String  currentApp = mySortedMap.get(
+                                mySortedMap.lastKey()).getPackageName();
+                        Log.d("runnig app",currentApp);
+                            mySortedMap.remove(mySortedMap.lastKey());//borro la ultima
+                        //y asi tendre la anterior
+
+                        previousApptolaunchafterCopy=mySortedMap.get(mySortedMap.lastKey()).getPackageName();
+                       Log.d("previous  app",previousApptolaunchafterCopy);
+                    }
+                }
+
+
+    }
+
+
 
 
 
@@ -284,6 +532,19 @@ public class MainActivity extends ListActivity {
             android.content.ClipData clip = android.content.ClipData.newPlainText("Copied Text", text);
             clipboard.setPrimaryClip(clip);
 
+            //lanazmaos previos app
+
+        if (previousApptolaunchafterCopy!=null) {
+
+            Intent launchIntent = getPackageManager().getLaunchIntentForPackage(previousApptolaunchafterCopy);
+            if (launchIntent!=null) {
+
+                startActivity(launchIntent);
+
+            }
+
+        }
+
             //salimos!!
 
             finish();
@@ -294,6 +555,8 @@ public class MainActivity extends ListActivity {
 
     //deleting  the email item
     public void ondeleteClick(View view) {
+
+
 
 
 
@@ -345,5 +608,10 @@ public class MainActivity extends ListActivity {
     }
 
 
+    @Override
+    protected void onResume() {
+        super.onResume();
 
+        lastapk();
+    }
 }
