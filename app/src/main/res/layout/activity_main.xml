@@ -31,6 +31,15 @@
         android:layout_height="50dp"
         android:layout_gravity="bottom|left"
         android:layout_margin="@dimen/fab_margin"
-        app:srcCompat="@android:drawable/ic_popup_sync" />
+        app:srcCompat="@drawable/exporticon" />
+
+
+    <android.support.design.widget.FloatingActionButton
+        android:id="@+id/importdb"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:layout_gravity="bottom|right"
+        android:layout_margin="@dimen/fab_margin"
+        app:srcCompat="@drawable/importicon" />
 
 </android.support.design.widget.CoordinatorLayout>

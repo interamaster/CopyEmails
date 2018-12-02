@@ -50,6 +50,8 @@ import static android.Manifest.permission.READ_EXTERNAL_STORAGE;
 import static android.Manifest.permission.WRITE_EXTERNAL_STORAGE;
 
 //v1.0 v1 final con acceso a datos de uso para poder volver a la app anterior y exportar db a downloads
+//v1.1 final ya funciona el import¡¡¡
+
 
 public class MainActivity extends ListActivity {
 
@@ -60,7 +62,6 @@ public class MainActivity extends ListActivity {
     private static final int PERMISSION_REQUEST_CODE = 200;
 
     private String previousApptolaunchafterCopy;
-
 
 
     @Override
@@ -145,7 +146,46 @@ public class MainActivity extends ListActivity {
 
 
 
-    //boton add email
+
+        //boton import db
+
+        FloatingActionButton importdbbutton = (FloatingActionButton) findViewById(R.id.importdb);
+        importdbbutton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+
+
+
+
+
+
+
+                AlertDialog.Builder todoTaskBuilder = new AlertDialog.Builder(MainActivity.this);
+                todoTaskBuilder.setTitle("IMPORTAR EMAILS");
+                todoTaskBuilder.setMessage("From download Folder");
+
+                todoTaskBuilder.setPositiveButton("SI", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialogInterface, int i) {
+
+                        importDB();
+
+                    }
+                });
+
+                todoTaskBuilder.setNegativeButton("Cancel", null);
+
+                todoTaskBuilder.create().show();
+
+            }
+
+        });
+
+
+
+
+
+        //boton add email
 
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
@@ -479,7 +519,8 @@ public class MainActivity extends ListActivity {
 
                         // Filter system decor apps
                         if ("com.android.systemui".equals(usageStats.getPackageName())||
-                                "com.sec.android.app.launcher".equals((usageStats.getPackageName()))) {
+                                "com.sec.android.app.launcher".equals(usageStats.getPackageName())||
+                                "com.google.android.apps.nexuslauncher".equals(usageStats.getPackageName())) {
                             continue;
                         }
                       //esto los ordena pior uso
@@ -624,83 +665,38 @@ public class MainActivity extends ListActivity {
 
    // https://stackoverflow.com/questions/6540906/simple-export-and-import-of-a-sqlite-database-on-android
 
-    /*
 
 
-I use this code in the SQLiteOpenHelper in one of my applications to import a database file.
 
-EDIT: I pasted my FileUtils.copyFile() method into the question.
+    //importing database
+    private void importDB() {
+        // TODO Auto-generated method stub
 
-SQLiteOpenHelper
-
-
-public static String DB_FILEPATH = "/data/data/{package_name}/databases/database.db";
-
-
- * Copies the database file at the specified location over the current
- * internal application database.
- *
-    public boolean importDatabase(String dbPath) throws IOException {
-
-        // Close the SQLiteOpenHelper so it will commit the created empty
-        // database to internal storage.
-        close();
-        File newDb = new File(dbPath);
-        File oldDb = new File(DB_FILEPATH);
-        if (newDb.exists()) {
-            FileUtils.copyFile(new FileInputStream(newDb), new FileOutputStream(oldDb));
-            // Access the copied database so SQLiteHelper will cache it and mark
-            // it as created.
-            getWritableDatabase().close();
-            return true;
-        }
-        return false;
-    }
-
-
-//y
-
-
-public class FileUtils {
-
-     * Creates the specified <code>toFile</code> as a byte for byte copy of the
-     * <code>fromFile</code>. If <code>toFile</code> already exists, then it
-     * will be replaced with a copy of <code>fromFile</code>. The name and path
-     * of <code>toFile</code> will be that of <code>toFile</code>.<br/>
-     * <br/>
-     * <i> Note: <code>fromFile</code> and <code>toFile</code> will be closed by
-     * this function.</i>
-     *
-     * @param fromFile
-     *            - FileInputStream for the file to copy from.
-     * @param toFile
-     *            - FileInputStream for the file to copy to.
-
-    public static void copyFile(FileInputStream fromFile, FileOutputStream toFile) throws IOException {
-        FileChannel fromChannel = null;
-        FileChannel toChannel = null;
         try {
-            fromChannel = fromFile.getChannel();
-            toChannel = toFile.getChannel();
-            fromChannel.transferTo(0, fromChannel.size(), toChannel);
-        } finally {
-            try {
-                if (fromChannel != null) {
-                    fromChannel.close();
-                }
-            } finally {
-                if (toChannel != null) {
-                    toChannel.close();
-                }
+
+                File dbtoimport = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                        TodoListSQLHelper.DB_NAME); // for example "my_data_backup.db"
+                File newdb = getApplicationContext().getDatabasePath(TodoListSQLHelper.DB_NAME);
+                if (dbtoimport.exists()) {
+
+
+                    FileChannel src = new FileInputStream(dbtoimport).getChannel();
+                    FileChannel dst = new FileOutputStream(newdb).getChannel();
+                    dst.transferFrom(src, 0, src.size());
+                    src.close();
+                    dst.close();
+
+
             }
+        } catch (Exception e) {
+
+            Toast.makeText(getBaseContext(), e.toString(), Toast.LENGTH_LONG)
+                    .show();
+
         }
+
+        updateTodoList();
+
     }
-}
-
-//Don't forget to delete the old database file if necessary.
-
-     */
-
-
 
 }
